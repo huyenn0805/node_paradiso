@@ -13,7 +13,7 @@ app.use([cors(), exp.json()]);
 
 //connect database
 const db = mysql.createConnection({
-    host: 'localhost', user:  'root', password: '', port: 3306, database: 'datn3'
+    host: 'localhost', user:  'root', password: '', port: 3000, database: 'datn3'
 })
 db.connect(err=>{
     if(err) throw err;
@@ -331,6 +331,158 @@ app.get('/ct_homestay/:id', (req, res) => {
         } else {
             res.status(404).json({ message: 'Homestay not found' });
         }
+    });
+});
+
+// Đăng ký, Đăng nhập
+app.post('/Register', (req, res) => {
+    let data = req.body;
+    let sql = `INSERT INTO users SET ?`;
+    db.query(sql, data, (err, data) => {
+        if (err) res.json({ "thongbao": "Tài khoản đã tồn tại", err })
+        else {
+            res.json({ "thongbao": "Tạo tài khoản thành công", data });
+        }
+    });
+})
+app.post('/login', (req, res) => {
+    const { email_user, pass_user } = req.body;
+
+    // Kiểm tra dữ liệu đầu vào
+    if (!email_user || !pass_user) {
+        return res.status(400).json({ message: 'Email và mật khẩu là bắt buộc' });
+    }
+
+    // SQL query để tìm người dùng theo email
+    const sql = 'SELECT * FROM users WHERE email_user = ?';
+    db.query(sql, [email_user], (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Có lỗi xảy ra', err });
+        }
+
+        if (results.length === 0) {
+            return res.status(401).json({ message: 'Email hoặc mật khẩu không chính xác' });
+        }
+
+        const user = results[0];
+
+        if (pass_user !== user.pass_user) {
+            return res.status(401).json({ message: 'Email hoặc mật khẩu không chính xác' });
+        }
+
+        res.status(200).json({
+            message: 'Đăng nhập thành công',
+            user: {
+                id: user.id_user,
+                name: user.ten_user,
+                email: user.email_user,
+                // dia_chi: user.dia_chi,
+                dien_thoai: user.sdt_user,
+                // hinh: user.hinh,
+                role: user.role_id,       
+            }
+        });
+    });
+});
+
+app.get('/admin/users', function (req, res) {
+    let sql = `SELECT id_user, ten_user, email_user, role_id FROM users`; // Sử dụng đúng tên cột
+    db.query(sql, (err, data) => {
+        if (err) {
+            res.json({ thongbao: 'Lỗi lấy danh sách người dùng', err });
+        } else {
+            res.json(data);
+        }
+    });
+});
+
+app.get('/admin/users/:id', function (req, res) {
+    let id = parseInt(req.params.id);
+    if (isNaN(id) || id <= 0) {
+        res.json({ thongbao: 'Không biết người dùng', id });
+        return;
+    }
+    let sql = `SELECT id_user, ten_user, email_user,sdt_user,role_id FROM users WHERE id_user = ?`;
+    db.query(sql, id, (err, data) => {
+        if (err) {
+            res.json({ thongbao: 'Lỗi lấy thông tin người dùng', err });
+        } else {
+            res.json(data[0]);
+        }
+    });
+});
+
+app.post('/admin/users', function (req, res) {
+    let data = req.body;
+    let sql = `INSERT INTO users SET ?`;
+    db.query(sql, data, (err, data) => {
+        if (err) {
+            res.json({ thongbao: 'Lỗi thêm người dùng', err });
+        } else {
+            res.json({ thongbao: 'Đã thêm người dùng', id: data.insertId });
+        }
+    });
+});
+app.put('/admin/users/:id', function (req, res) {
+    let data = req.body;
+    let id = req.params.id;
+    let sql = 'UPDATE users SET ? WHERE id_user = ?';
+    db.query(sql, [data, id], (err, d) => {
+        if (err) {
+            res.json({ thongbao: 'Lỗi cập nhật người dùng', err });
+        } else {
+            res.json({ thongbao: 'Đã cập nhật người dùng' });
+        }
+    });
+});
+app.delete('/admin/users/:id', function (req, res) {
+    let id = req.params.id;
+    let sql = 'DELETE FROM users WHERE id_user = ?';
+    db.query(sql, id, (err, d) => {
+        if (err) {
+            res.json({ thongbao: 'Lỗi khi xóa người dùng', err });
+        } else {
+            res.json({ thongbao: 'Đã xóa người dùng' });
+        }
+    });
+});
+app.get('/api/articles', (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const pageSize = 4; // Số bài viết trên mỗi trang
+  const offset = (page - 1) * pageSize;
+
+  db.query('SELECT COUNT(*) AS total FROM baiviet', (err, result) => {
+    if (err) throw err;
+    const total = result[0].total;
+    const totalPages = Math.ceil(total / pageSize);
+
+    db.query('SELECT * FROM baiviet LIMIT ?, ?', [offset, pageSize], (err, articles) => {
+      if (err) throw err;
+      res.json({
+        articles,
+        currentPage: page,
+        totalPages
+      });
+    });
+  });
+});
+ 
+// Xử lý form liên hệ
+app.post('/contact', (req, res) => {
+    const { name, email, message } = req.body;
+
+    // Kiểm tra xem có giá trị nào trống không
+    if (!name || !email || !message) {
+        return res.status(400).json({ "thongbao": "Vui lòng điền đầy đủ thông tin!" });
+    }
+
+    const sql = 'INSERT INTO contact_messages (name, email, message) VALUES (?, ?, ?)';
+    db.query(sql, [name, email, message], (err, result) => {
+        if (err) {
+            console.error("Lỗi khi lưu dữ liệu:", err);
+            return res.status(500).json({ "thongbao": "Lỗi khi gửi tin nhắn" });
+        }
+        res.status(200).json({ "thongbao": "Gửi tin thành công!" });
     });
 });
 
